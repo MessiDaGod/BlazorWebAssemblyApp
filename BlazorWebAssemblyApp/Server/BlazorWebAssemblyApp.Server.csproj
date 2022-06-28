@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>BlazorWebAssemblyApp.Server-430E40D4-C730-4C75-9FF8-DB41A491A556</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="6.0.6" />
+    <PackageReference Include="Stl.Fusion" Version="2.4.81" />
+    <PackageReference Include="Stl" Version="2.4.81" />
+    <PackageReference Include="Stl.Fusion.EntityFramework" Version="2.4.81" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
+    <PackageReference Include="Stl.Fusion.Server" Version="2.4.81" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="6.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Client\BlazorWebAssemblyApp.Client.csproj" />
+    <ProjectReference Include="..\Shared\BlazorWebAssemblyApp.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Stl.Fusion" />
+    <None Remove="Stl" />
+    <None Remove="Stl.Fusion.EntityFramework" />
+    <None Remove="Microsoft.Extensions.DependencyInjection" />
+    <None Remove="Stl.Fusion.Server" />
+    <None Remove="Microsoft.AspNetCore.Authentication.MicrosoftAccount" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="app.db" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="6.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="6.0.6" />
+    <PackageReference Include="Microsoft.AspNetCore.ApiAuthorization.IdentityServer" Version="6.0.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="6.0.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="6.0.6" />
+  </ItemGroup>
+
+</Project>
