@@ -1,37 +1,18 @@
-﻿using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.ResponseCompression;
+﻿using System.Collections.Generic;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using BlazorWebAssemblyApp.Server.Data;
-using BlazorWebAssemblyApp.Server.Models;
-using Stl.Fusion.EntityFramework;
-using Stl.IO;
-using BlazorWebAssemblyApp.Server;
 using Microsoft.Extensions.Configuration.Memory;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Stl.Fusion.Operations.Reprocessing;
-using Stl.Fusion.Bridge;
-using Stl.Fusion;
-using Stl.Fusion.Server;
-using Stl.Fusion.Server.Controllers;
-using Microsoft.AspNetCore.Authentication.MicrosoftAccount;
-using Stl.Fusion.Server.Authentication;
-using System.Diagnostics;
+using Microsoft.Extensions.Hosting;
+using BlazorWebAssemblyApp.Server;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using BlazorWebAssemblyApp.Server.Data;
+using BlazorWebAssemblyApp.Server.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
-// Add services to the container.
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
-builder.Services.AddDatabaseDeveloperPageExceptionFilter();
-
-builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = true)
-    .AddEntityFrameworkStores<ApplicationDbContext>();
-
-builder.Services.AddIdentityServer()
-    .AddApiAuthorization<ApplicationUser, ApplicationDbContext>();
+builder.Services.AddResponseCaching();
 
 var host = Host.CreateDefaultBuilder()
     .ConfigureHostConfiguration(cfg => {
@@ -47,96 +28,50 @@ var host = Host.CreateDefaultBuilder()
         .UseDefaultServiceProvider((ctx, options) => {
             options.ValidateScopes = ctx.HostingEnvironment.IsDevelopment();
             options.ValidateOnBuild = false;
-        }))
+        })
+        .UseStartup<Startup>())
     .Build();
 
-var server = new ServerSettings();
-builder.Services.AddSingleton(new Publisher.Options() { Id = server.PublisherId });
-var fusion = builder.Services.AddFusion();
-var fusionServer = fusion.AddWebServer();
-//var fusionClient = fusion.AddRestEaseClient();
-var fusionAuth = fusion.AddAuthentication().AddServer(
-    signInControllerSettingsFactory: _ => SignInController.DefaultSettings with
-    {
-        DefaultScheme = MicrosoftAccountDefaults.AuthenticationScheme,
-        SignInPropertiesBuilder = (_, properties) =>
-        {
-            properties.IsPersistent = true;
-        }
-    },
-    serverAuthHelperSettingsFactory: _ => ServerAuthHelper.DefaultSettings with
-    {
-        NameClaimKeys = Array.Empty<string>(),
-    });
+// Ensure the DB is created
+var dbContextFactory = host.Services.GetRequiredService<IDbContextFactory<ShakelyContext>>();
+var dbContextFactory2 = host.Services.GetRequiredService<IDbContextFactory<ApplicationDbContext>>();
+await using var dbContext = dbContextFactory.CreateDbContext();
+await using var dbContext2 = dbContextFactory2.CreateDbContext();
+// await dbContext.Database.EnsureDeletedAsync();
+await dbContext.Database.EnsureCreatedAsync();
+await dbContext2.Database.EnsureCreatedAsync();
 
-builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton(
-    TransientFailureDetector.New(e => e is DbUpdateConcurrencyException)));
+await dbContext.DisposeAsync();
 
-builder.Services.AddDbContext<ShakelyContext>(ServiceLifetime.Transient);
-builder.Services.AddDbContext<ApplicationDbContext>(ServiceLifetime.Transient);
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlite(connectionString));
+builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
-//var tmpServices = builder.Services.BuildServiceProvider();
+builder.Services.AddDefaultIdentity<ApplicationUser>(options => options.SignIn.RequireConfirmedAccount = false)
+    .AddEntityFrameworkStores<ApplicationDbContext>();
 
-builder.Services.AddScoped(sp => sp.GetRequiredService<IDbContextFactory<ShakelyContext>>().CreateDbContext());
-
-try {
-    var appDir = FilePath.GetApplicationDirectory();
-    var dbPath = appDir & "Shakely.db";
-
-    builder.Services.AddDbContextFactory<ShakelyContext>(dbContext =>
-    {
-        dbContext.UseSqlite($"Data Source={dbPath}");
-
-    });
-    //builder.Services.AddDbContext<ShakelyContext>(ServiceLifetime.Transient);
-    builder.Services.AddDbContextServices<ShakelyContext>(dbContext =>
-    {
-        dbContext.AddEntityResolver<long, Price>();
-        dbContext.AddEntityResolver<long, Price>((_, options) =>
-        {
-            options.QueryTransformer = prices => prices.Include(c => c.AdjustedClose);
-        });
-        dbContext.AddFileBasedOperationLogChangeTracking(dbPath + "_changed");
-        dbContext.AddAuthentication();
-    });
-} catch (Exception e) {
-    Debug.WriteLine(e.Message);
-    Debug.WriteLine(e.InnerException?.Message ?? "");
-    throw;
-}
-
-builder.Services.AddAuthentication()
-    .AddIdentityServerJwt();
-
-builder.Services.AddControllersWithViews();
-builder.Services.AddRazorPages();
+builder.Services.AddIdentityServer()
+    .AddApiAuthorization<ApplicationUser, ApplicationDbContext>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment()) {
-    app.UseMigrationsEndPoint();
-    app.UseWebAssemblyDebugging();
-} else {
-    app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
-    app.UseHsts();
-}
+app.UseResponseCaching();
 
-app.UseHttpsRedirection();
+// app.MapBlazorHub();
 
-app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.Use(async (context, next) =>
+{
+    context.Response.GetTypedHeaders().CacheControl =
+        new Microsoft.Net.Http.Headers.CacheControlHeaderValue()
+        {
+            Public = true,
+            MaxAge = TimeSpan.FromSeconds(10)
+        };
+    context.Response.Headers[Microsoft.Net.Http.Headers.HeaderNames.Vary] =
+        new string[] { "Accept-Encoding" };
 
-app.UseRouting();
+    await next();
+});
 
-app.UseIdentityServer();
-app.UseAuthentication();
-app.UseAuthorization();
-
-
-app.MapRazorPages();
-app.MapControllers();
-app.MapFallbackToFile("index.html");
-
-app.Run();
+await host.RunAsync();
